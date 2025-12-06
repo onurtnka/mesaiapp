@@ -1,7 +1,10 @@
-import 'dart:ui'; // Blur efekti için gerekli
+import 'dart:ui'; 
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import '../onboarding/onboarding_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../navigation/main_navigation.dart';
+import '../../main.dart'; 
 
 class WelcomeScreen extends StatefulWidget {
   const WelcomeScreen({super.key});
@@ -10,11 +13,9 @@ class WelcomeScreen extends StatefulWidget {
   State<WelcomeScreen> createState() => _WelcomeScreenState();
 }
 
+// 🔥 DÜZELTME: 'SingleTickerProviderStateMixin' yerine 'TickerProviderStateMixin'
 class _WelcomeScreenState extends State<WelcomeScreen> with TickerProviderStateMixin {
-  // Animasyon Kontrolcüleri
   late AnimationController _blobController;
-  late Animation<double> _blobAnim;
-  
   late AnimationController _textController;
   late Animation<Offset> _slideAnim;
   late Animation<double> _fadeAnim;
@@ -23,13 +24,11 @@ class _WelcomeScreenState extends State<WelcomeScreen> with TickerProviderStateM
   void initState() {
     super.initState();
 
-    // 1. Arka Plan Blob Hareketi (Sürekli Dönüş)
     _blobController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 10),
-    )..repeat(); // Sonsuz döngü
+    )..repeat(); 
 
-    // 2. Yazı Giriş Animasyonları
     _textController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1200),
@@ -41,7 +40,6 @@ class _WelcomeScreenState extends State<WelcomeScreen> with TickerProviderStateM
     
     _fadeAnim = CurvedAnimation(parent: _textController, curve: Curves.easeIn);
 
-    // Başlat
     _textController.forward();
   }
 
@@ -52,11 +50,26 @@ class _WelcomeScreenState extends State<WelcomeScreen> with TickerProviderStateM
     super.dispose();
   }
 
+  void _completeWelcome() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('onboarding_completed', true);
+    
+    if (mounted) {
+       Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => MainNavigation(onThemeChanged: (mode) {
+             MesaiApp.of(context)?.updateTheme(mode);
+          }),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = MediaQuery.of(context).platformBrightness == Brightness.dark;
     
-    // Renk Paleti
     final bg = isDark ? const Color(0xFF0F172A) : const Color(0xFFFFFFFF);
     final textMain = isDark ? Colors.white : const Color(0xFF0F172A);
     final textSec = isDark ? Colors.grey.shade400 : Colors.grey.shade600;
@@ -65,29 +78,23 @@ class _WelcomeScreenState extends State<WelcomeScreen> with TickerProviderStateM
       backgroundColor: bg,
       body: Stack(
         children: [
-          // --- 1. HAREKETLİ ARKA PLAN (AURORA EFEKTİ) ---
-          // Mavi Top
           _buildAnimatedBlob(
             color: const Color(0xFF3B82F6).withOpacity(0.4),
             alignment: Alignment.topLeft,
             offset: const Offset(-100, -100),
           ),
-          // Mor Top
           _buildAnimatedBlob(
             color: const Color(0xFF8B5CF6).withOpacity(0.4),
             alignment: Alignment.centerRight,
             offset: const Offset(100, -200),
             reverse: true,
           ),
-          // Yeşil Top
           _buildAnimatedBlob(
             color: const Color(0xFF10B981).withOpacity(0.3),
             alignment: Alignment.bottomLeft,
             offset: const Offset(-100, 200),
           ),
 
-          // --- 2. BUZLU CAM (BLUR) KATMANI ---
-          // Renkleri yumuşatıp "Aurora" etkisi verir
           Positioned.fill(
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 60, sigmaY: 60),
@@ -95,7 +102,6 @@ class _WelcomeScreenState extends State<WelcomeScreen> with TickerProviderStateM
             ),
           ),
 
-          // --- 3. İÇERİK ---
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 30),
@@ -104,7 +110,6 @@ class _WelcomeScreenState extends State<WelcomeScreen> with TickerProviderStateM
                 children: [
                   const Spacer(),
 
-                  // LOGO
                   SlideTransition(
                     position: _slideAnim,
                     child: FadeTransition(
@@ -135,7 +140,6 @@ class _WelcomeScreenState extends State<WelcomeScreen> with TickerProviderStateM
 
                   const SizedBox(height: 40),
 
-                  // BAŞLIK VE METİN
                   SlideTransition(
                     position: _slideAnim,
                     child: FadeTransition(
@@ -154,7 +158,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> with TickerProviderStateM
                           ),
                           const SizedBox(height: 16),
                           Text(
-                            "Maaşınızı, mesailerinizi ve ek gelirlerinizi profesyonelce yönetin. Karmaşık hesaplara son.",
+                            "Maaşınızı, mesailerinizi ve ek gelirlerinizi profesyonelce yönetin.",
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               fontSize: 16,
@@ -169,18 +173,12 @@ class _WelcomeScreenState extends State<WelcomeScreen> with TickerProviderStateM
 
                   const Spacer(),
 
-                  // ACTION BUTTON
                   SlideTransition(
                     position: _slideAnim,
                     child: FadeTransition(
                       opacity: _fadeAnim,
                       child: GestureDetector(
-                        onTap: () {
-                          Navigator.pushReplacement(
-                            context,
-                            MaterialPageRoute(builder: (_) => const OnboardingScreen()),
-                          );
-                        },
+                        onTap: _completeWelcome,
                         child: Container(
                           height: 64,
                           decoration: BoxDecoration(
@@ -226,7 +224,6 @@ class _WelcomeScreenState extends State<WelcomeScreen> with TickerProviderStateM
     );
   }
 
-  // Hareket eden renkli top widget'ı
   Widget _buildAnimatedBlob({
     required Color color, 
     required Alignment alignment, 
@@ -236,9 +233,8 @@ class _WelcomeScreenState extends State<WelcomeScreen> with TickerProviderStateM
     return AnimatedBuilder(
       animation: _blobController,
       builder: (context, child) {
-        // Dairesel hareket hesabı
-        final double t = _blobController.value * 2 * 3.14159; // 0 -> 2PI
-        final double moveX = 30 * (reverse ? -1 : 1) * (0.5 + 0.5 * (t).abs()); // Basit salınım
+        final double t = _blobController.value * 2 * 3.14159; 
+        final double moveX = 30 * (reverse ? -1 : 1) * (0.5 + 0.5 * (t).abs());
         final double moveY = 30 * (reverse ? 1 : -1) * (0.5 + 0.5 * (t + 1).abs());
 
         return Align(

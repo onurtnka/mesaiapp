@@ -9,7 +9,8 @@ import '../settings/settings_screen.dart';
 import '../mesai/mesai_hesaplama_screen.dart';
 
 class MainNavigation extends StatefulWidget {
-  final void Function(bool) onThemeChanged;
+  // 🔥 GÜNCELLEME: Artık ThemeMode alıyor (Sistem/Açık/Koyu)
+  final void Function(ThemeMode) onThemeChanged;
 
   const MainNavigation({super.key, required this.onThemeChanged});
 
@@ -22,7 +23,6 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
   late AnimationController _controller;
   late Animation<double> _anim;
   
-  // Sayfaları state koruyarak tutmak için
   late List<Widget> _pages;
 
   @override
@@ -35,8 +35,8 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
       duration: const Duration(milliseconds: 500), 
     );
     
-    // Yumuşak yaylanma efekti
-    _anim = CurvedAnimation(parent: _controller, curve: Curves.easeOutBack);
+    // Elastik efekt (Orijinal Liquid hissi)
+    _anim = CurvedAnimation(parent: _controller, curve: Curves.elasticOut);
     
     // Başlangıçta animasyon tamamlanmış olsun (İlk ikon yukarıda)
     _controller.value = 1; 
@@ -58,7 +58,7 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
   void _onTap(int index) {
     if (_currentIndex == index) return;
     
-    HapticFeedback.lightImpact(); // Titreşim hissi
+    HapticFeedback.lightImpact(); // Hafif titreşim
     setState(() => _currentIndex = index);
     
     // Animasyonu sıfırla ve yeniden başlat (Sıvı hareketi)
@@ -70,55 +70,102 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     
-    // Renk Paleti (Liquid için özel)
+    // --- RENK PALETİ (Liquid İçin Özel) ---
     final bgColor = isDark ? const Color(0xFF111827) : const Color(0xFFF4F6F9);
     final navBarColor = isDark ? const Color(0xFF1F2937) : Colors.white;
-    final iconSelectedColor = isDark ? const Color(0xFF3B82F6) : const Color(0xFF0F172A);
+    
+    // Top (Bubble) rengi - Fintech Mavisi
+    final bubbleColor = isDark ? const Color(0xFF3B82F6) : const Color(0xFF0F172A);
+    
+    final iconSelectedColor = Colors.white; 
     final iconUnselectedColor = isDark ? Colors.grey.shade600 : Colors.grey.shade400;
 
     return Scaffold(
       backgroundColor: bgColor,
-      // Stack ile içeriğin üzerine barı çiziyoruz
-      body: Stack(
-        children: [
-          // 1. SAYFALAR (Arka Plan)
-          Positioned.fill(
-            child: IndexedStack(
-              index: _currentIndex,
-              children: _pages,
-            ),
+      extendBody: true, // Barın arkasına içerik kaysın (Liquid için şart)
+      
+      // 🔥 SAYFA GEÇİŞ ANİMASYONU (YENİ)
+      body: SizedBox.expand(
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 500),
+          switchInCurve: Curves.easeOut,
+          switchOutCurve: Curves.easeIn,
+          transitionBuilder: (child, animation) {
+            return FadeTransition(opacity: animation, child: child);
+          },
+          child: KeyedSubtree(
+            key: ValueKey<int>(_currentIndex),
+            child: _pages[_currentIndex],
           ),
+        ),
+      ),
 
-          // 2. LIQUID NAVIGATION BAR (En Altta)
-          Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            child: SizedBox(
-              height: 100, // Bar yüksekliği (Kavis payı + güvenli alan)
-              child: CustomPaint(
-                painter: _LiquidPainter(
-                  selectedIndex: _currentIndex,
-                  itemCount: 4,
-                  color: navBarColor,
-                  isDark: isDark,
-                ),
-                child: SizedBox(
-                  height: 100,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-                      _buildLiquidIcon(0, LucideIcons.home, iconSelectedColor, iconUnselectedColor),
-                      _buildLiquidIcon(1, LucideIcons.calculator, iconSelectedColor, iconUnselectedColor),
-                      _buildLiquidIcon(2, LucideIcons.clock, iconSelectedColor, iconUnselectedColor),
-                      _buildLiquidIcon(3, LucideIcons.settings, iconSelectedColor, iconUnselectedColor),
-                    ],
-                  ),
-                ),
+      // 🔥 LIQUID NAVIGATION BAR (KORUNDU)
+      bottomNavigationBar: SizedBox(
+        height: 200, // Bar yüksekliği (Kavis payı dahil)
+        child: Stack(
+          alignment: Alignment.bottomCenter,
+          children: [
+            // 1. ÖZEL ÇİZİM BAR (Arka plan ve Oyuk)
+            CustomPaint(
+              size: Size(MediaQuery.of(context).size.width, 100),
+              painter: _LiquidPainter(
+                selectedIndex: _currentIndex,
+                itemCount: 4,
+                color: navBarColor, // Barın rengi
+                isDark: isDark,
               ),
             ),
-          ),
-        ],
+
+            // 2. HAREKET EDEN TOP (BUBBLE)
+            _buildAnimatedBubble(bubbleColor),
+
+            // 3. İKONLAR
+            SizedBox(
+              height: 100,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  _buildLiquidIcon(0, LucideIcons.home, iconSelectedColor, iconUnselectedColor),
+                  _buildLiquidIcon(1, LucideIcons.calculator, iconSelectedColor, iconUnselectedColor),
+                  _buildLiquidIcon(2, LucideIcons.clock, iconSelectedColor, iconUnselectedColor),
+                  _buildLiquidIcon(3, LucideIcons.settings, iconSelectedColor, iconUnselectedColor),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Hareket eden renkli top (Bubble)
+  Widget _buildAnimatedBubble(Color color) {
+    final width = MediaQuery.of(context).size.width;
+    final itemWidth = width / 4;
+    
+    // Topun yatay pozisyonu
+    final double leftPos = (_currentIndex * itemWidth) + (itemWidth / 2) - 26; // 25 = yarıçap
+
+    return AnimatedPositioned(
+      duration: const Duration(milliseconds: 500), // Animasyonla senkron
+      curve: Curves.elasticOut, 
+      left: leftPos,
+      bottom: 40, // Barın üstünde yüzüyor (Oyuğun tam ortasında)
+      child: Container(
+        width: 50,
+        height: 50,
+        decoration: BoxDecoration(
+          color: color,
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: color.withOpacity(0.4),
+              blurRadius: 10,
+              offset: const Offset(0, 6),
+            )
+          ],
+        ),
       ),
     );
   }
@@ -134,27 +181,21 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
           animation: _anim,
           builder: (context, child) {
             // Seçili ikon yukarı çıkar (Floating effect)
-            // Animasyon 0'dan 1'e giderken Y değeri -35'e (yukarı) kayar
+            // Animasyon 0'dan 1'e giderken Y değeri -30'a (yukarı) kayar
             double offsetY = isSelected ? -30 * _anim.value : 0;
             
-            // Seçili ikon hafif büyür
-            double scale = isSelected ? 1.1 : 1.0;
-
             return Transform.translate(
-              offset: Offset(0, offsetY + 15), // +15 hizalama için
-              child: Transform.scale(
-                scale: scale,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      icon, 
-                      color: isSelected ? activeColor : inactiveColor,
-                      size: 26,
-                    ),
-                    // Liquid tasarımda genelde yazı olmaz, ikon hareketi yeterlidir
-                  ],
-                ),
+              offset: Offset(0, offsetY + 15), // +15 dikey hizalama
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    icon, 
+                    // Seçiliyse Beyaz, Değilse Gri
+                    color: isSelected ? activeColor : inactiveColor,
+                    size: 26,
+                  ),
+                ],
               ),
             );
           },
@@ -165,7 +206,7 @@ class _MainNavigationState extends State<MainNavigation> with TickerProviderStat
 }
 
 // ==============================================================================
-// CUSTOM PAINTER: SIVI EFEKTİNİ ÇİZEN MOTOR
+// CUSTOM PAINTER: SIVI EFEKTİNİ ÇİZEN MOTOR (KORUNDU)
 // ==============================================================================
 class _LiquidPainter extends CustomPainter {
   final int selectedIndex;
@@ -188,54 +229,52 @@ class _LiquidPainter extends CustomPainter {
 
     // Hafif gölge efekti (Derinlik katar)
     final shadowPaint = Paint()
-      ..color = Colors.black.withOpacity(isDark ? 0.3 : 0.05)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10);
+      ..color = Colors.black.withOpacity(isDark ? 0.5 : 0.05)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 15);
 
     final path = Path();
     final double itemWidth = size.width / itemCount;
     
-    // Çukurun merkezi (Seçili ikonun olduğu yer)
+    // Çukurun merkezi
     double centerX = (selectedIndex * itemWidth) + (itemWidth / 2);
 
     // --- KAVİS AYARLARI (Yumuşatılmış) ---
-    double topY = 30;       // Barın üst çizgisinin başladığı Y
-    double curveDepth = 35; // Çukurun derinliği
-    double curveWidth = 70; // Çukurun genişliği (Yayvan U)
+    double topY = 25;       // Barın başladığı Y noktası (0 en üst)
+    double curveDepth = 45; // Çukurun derinliği
+    double curveWidth = 75; // Çukurun genişliği (Yayvanlık)
 
     path.moveTo(0, topY); 
     
-    // 1. Sol Düz Çizgi
+    // 1. Sol Düz Çizgi (Merkeze kadar)
     path.lineTo(centerX - curveWidth, topY);
 
-    // 2. Kavis (Cubic Bezier - Sıvı Hareketi)
+    // 2. Kavis (Su damlası oyuğu)
     path.cubicTo(
-      centerX - (curveWidth * 0.5), topY,        // Kontrol 1: Giriş
-      centerX - (curveWidth * 0.4), topY + curveDepth, // Kontrol 2: İniş
-      centerX, topY + curveDepth,                // Hedef: Dip
+      centerX - (curveWidth * 0.5), topY,        // Kontrol 1
+      centerX - (curveWidth * 0.4), topY + curveDepth, // Kontrol 2
+      centerX, topY + curveDepth,                // Hedef (Dip)
     );
     
     path.cubicTo(
-      centerX + (curveWidth * 0.4), topY + curveDepth, // Kontrol 3: Çıkış
-      centerX + (curveWidth * 0.5), topY,        // Kontrol 4: Bitiş
+      centerX + (curveWidth * 0.4), topY + curveDepth, // Kontrol 3
+      centerX + (curveWidth * 0.5), topY,        // Kontrol 4
       centerX + curveWidth, topY                 // Sağ Düz
     );
 
-    // 3. Sağ Düz Çizgi
+    // 3. Sağ Düz Çizgi ve Kapatma
     path.lineTo(size.width, topY);
-    
-    // 4. Alt ve Yanları Kapat
     path.lineTo(size.width, size.height);
     path.lineTo(0, size.height);
     path.close();
 
-    // Çizim (Önce gölge, sonra bar)
-    canvas.drawPath(path, shadowPaint);
+    // Çizim (Gölgeyi biraz aşağı kaydırarak çiz)
+    canvas.drawPath(path.shift(const Offset(0, -5)), shadowPaint);
     canvas.drawPath(path, paint);
   }
 
   @override
   bool shouldRepaint(covariant _LiquidPainter oldDelegate) {
-    // Seçim değişirse veya tema değişirse yeniden çiz
+    // Seçim veya renk değişirse yeniden çiz
     return oldDelegate.selectedIndex != selectedIndex || oldDelegate.color != color;
   }
 }

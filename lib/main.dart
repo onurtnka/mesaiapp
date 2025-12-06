@@ -1,84 +1,107 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:intl/date_symbol_data_local.dart'; // Tarih formatı için
+import 'package:intl/date_symbol_data_local.dart';
+import 'package:drift/drift.dart' as drift;
 
-// Dosya yolları
 import 'core/app_database.dart';
 import 'screens/navigation/main_navigation.dart';
 import 'screens/welcome/welcome_screen.dart';
-import 'theme/app_theme.dart'; // Tema dosyasını aşağıda oluşturacağız
+import 'theme/app_theme.dart';
 
-Future<void> main() async {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  // 1. Türkçe tarih formatını başlat
   await initializeDateFormatting('tr_TR', null);
 
-  // 2. Veritabanını başlat
   final db = AppDatabase();
-
-  // 3. Kritik verileri PARALEL (Aynı anda) yükle (Performans için)
-  final results = await Future.wait([
-    _checkOnboarding(db),            // index 0: Onboarding durumu
-    SharedPreferences.getInstance(), // index 1: Ayarlar
-  ]);
-
-  final bool onboardingCompleted = results[0] as bool;
-  final SharedPreferences prefs = results[1] as SharedPreferences;
-  final bool isDark = prefs.getBool("darkMode") ?? false;
+  await _ensureDefaultSettings(db);
 
   runApp(
-    Provider<AppDatabase>.value(
-      value: db,
-      child: MesaiApp(
-        onboardingCompleted: onboardingCompleted,
-        initialDarkMode: isDark,
-      ),
+    Provider<AppDatabase>(
+      create: (_) => db,
+      dispose: (_, db) => db.close(),
+      child: const MesaiApp(),
     ),
   );
 }
 
-/// Kullanıcının daha önce kurulum yapıp yapmadığını kontrol eder
-Future<bool> _checkOnboarding(AppDatabase db) async {
+Future<void> _ensureDefaultSettings(AppDatabase db) async {
   try {
     final settings = await db.select(db.userSettingsTable).get();
-    return settings.isNotEmpty;
+
+    if (settings.isEmpty) {
+      await db.into(db.userSettingsTable).insert(
+        const UserSettingsTableCompanion(
+          // ✅ weeklyHours String olmalı
+          weeklyHours: drift.Value('45'),
+          monthlyWorkHours: drift.Value(225),
+          workType: drift.Value('monthly'),
+        ),
+      );
+    }
   } catch (e) {
-    debugPrint("DB Kontrol Hatası: $e");
-    return false; // Hata varsa onboarding'e yönlendir
+    debugPrint("Varsayılan ayar hatası: $e");
   }
 }
 
 class MesaiApp extends StatefulWidget {
-  final bool onboardingCompleted;
-  final bool initialDarkMode;
+  const MesaiApp({super.key});
 
-  const MesaiApp({
-    super.key,
-    required this.onboardingCompleted,
-    required this.initialDarkMode,
-  });
+  static _MesaiAppState? of(BuildContext context) =>
+      context.findAncestorStateOfType<_MesaiAppState>();
 
   @override
   State<MesaiApp> createState() => _MesaiAppState();
 }
 
 class _MesaiAppState extends State<MesaiApp> {
-  late bool isDarkMode;
+  ThemeMode _themeMode = ThemeMode.system;
+
+  late final Future<bool> _initAppFuture;
 
   @override
   void initState() {
     super.initState();
-    isDarkMode = widget.initialDarkMode;
+    _initAppFuture = _initApp();
   }
 
-  // Temayı değiştiren ve kaydeden fonksiyon
-  void updateTheme(bool dark) async {
-    setState(() => isDarkMode = dark); // UI'ı anında güncelle
-    
+  Future<bool> _initApp() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool("darkMode", dark); // Kalıcı hafızaya yaz
+
+    final themeStr = prefs.getString("theme_mode") ?? "system";
+    final loadedTheme = _getThemeMode(themeStr);
+
+    if (mounted) {
+      setState(() => _themeMode = loadedTheme);
+    }
+
+    await Future.delayed(const Duration(seconds: 3));
+
+    return prefs.getBool("onboarding_completed") ?? false;
+  }
+
+  Future<void> updateTheme(ThemeMode mode) async {
+    if (!mounted) return;
+
+    setState(() => _themeMode = mode);
+
+    final prefs = await SharedPreferences.getInstance();
+    String modeStr = 'system';
+    if (mode == ThemeMode.light) modeStr = 'light';
+    if (mode == ThemeMode.dark) modeStr = 'dark';
+
+    await prefs.setString("theme_mode", modeStr);
+  }
+
+  ThemeMode _getThemeMode(String mode) {
+    switch (mode) {
+      case 'dark':
+        return ThemeMode.dark;
+      case 'light':
+        return ThemeMode.light;
+      default:
+        return ThemeMode.system;
+    }
   }
 
   @override
@@ -86,16 +109,25 @@ class _MesaiAppState extends State<MesaiApp> {
     return MaterialApp(
       title: 'Mesai Hesapla',
       debugShowCheckedModeBanner: false,
-      
-      // Tema Ayarları (AppTheme sınıfından gelir)
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
-      themeMode: isDarkMode ? ThemeMode.dark : ThemeMode.light,
+      themeMode: _themeMode,
+      home: FutureBuilder<bool>(
+        future: _initAppFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const WelcomeScreen();
+          }
 
-      // Yönlendirme Mantığı
-      home: widget.onboardingCompleted
-          ? MainNavigation(onThemeChanged: updateTheme) 
-          : const WelcomeScreen(),
+          final hasSeenWelcome = snapshot.data ?? false;
+
+          if (hasSeenWelcome) {
+            return MainNavigation(onThemeChanged: updateTheme);
+          }
+
+          return const WelcomeScreen();
+        },
+      ),
     );
   }
 }

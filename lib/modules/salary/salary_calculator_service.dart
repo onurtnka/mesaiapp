@@ -1,118 +1,137 @@
-import 'salary_result_model.dart'; // Hesaplanan aylık sonuçları tutan model dosyası
+import 'salary_result_model.dart';
 
 class SalaryCalculatorService {
-  // 12 ay listesi – her ay için hesaplama yapılacak
   final List<String> months = [
     "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
     "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"
   ];
 
-  // 2025 Gelir Vergisi Dilimleri (Verginet birebir)
+  // 2025 Vergi Dilimleri
   final List<_TaxBracket> gv = [
-    _TaxBracket(limit: 110000, rate: 0.15),     // 0 – 110.000 TL → %15
-    _TaxBracket(limit: 230000, rate: 0.20),     // 110.000 – 230.000 → %20
-    _TaxBracket(limit: 580000, rate: 0.27),     // 230.000 – 580.000 → %27
-    _TaxBracket(limit: 3000000, rate: 0.35),    // 580.000 – 3.000.000 → %35
-    _TaxBracket(limit: 999999999, rate: 0.40),  // Üstü → %40
+    _TaxBracket(limit: 110000, rate: 0.15),
+    _TaxBracket(limit: 230000, rate: 0.20),
+    _TaxBracket(limit: 580000, rate: 0.27),
+    _TaxBracket(limit: 3000000, rate: 0.35),
+    _TaxBracket(limit: 999999999, rate: 0.40),
   ];
 
-  // 2025 gelir vergisi ve damga vergisi istisnaları
-  static const double gvIstisna = 3315.70;   // Gelir Vergisi istisnası (AGİ yerine)
-  static const double damgaIstisna = 197.38; // Damga vergisi istisnası
+  static const double gvIstisna = 3315.70;
+  static const double damgaIstisna = 197.38;
 
-  // Artan oranlı GV hesaplama (Verginet formülü birebir)
   double _calculateIncomeTax(double matrah, double prevKumulatif) {
-    double remaining = matrah; // Bu ayın vergilendirilecek matrahı
-    double tax = 0;            // Bu ay çıkacak vergi
-
+    double remaining = matrah;
+    double tax = 0;
     for (var bracket in gv) {
-      // Geçen ayki kümülatif, dilimin limitini aşmış mı? Aştıysa limit kadar say.
       double usedBefore = prevKumulatif > bracket.limit ? bracket.limit : prevKumulatif;
-
-      // Bu dilimde kalan boş alan
       double available = bracket.limit - usedBefore;
       if (available <= 0) continue;
-
-      // Bu ayın matrahının dilimde vergilenecek kısmı
       double taxable = remaining > available ? available : remaining;
-
-      tax += taxable * bracket.rate; // İlgili dilim oranı ile hesapla
-      remaining -= taxable;          // Geriye kalan matrah
-
-      if (remaining <= 0) break;     // Vergilenecek matrah kalmadı
+      tax += taxable * bracket.rate;
+      remaining -= taxable;
+      if (remaining <= 0) break;
     }
-
-    return tax; // Bu ayın gelir vergisi
+    return tax;
   }
 
-  // Tek bir ayın maaş hesabı
   SalaryResult calculateMonth({
     required String month,
     required double brut,
     required double prevKumulatif,
   }) {
-    double sgkIsci = brut * 0.14;       // SGK işçi payı %14
-    double issizlikIsci = brut * 0.01;  // İşsizlik sig. işçi payı %1
-
-    double matrah = brut - sgkIsci - issizlikIsci; // Vergi matrahı (brüt - kesintiler)
-
-    double gelirVergisi = _calculateIncomeTax(matrah, prevKumulatif); // Artan oranlı GV
-    double damgaVergisi = brut * 0.00759; // Damga vergisi %0.759
-
-    // ⭐ Verginet net maaş hesabı
-    double net = brut
-        - sgkIsci
-        - issizlikIsci
-        - gelirVergisi
-        - damgaVergisi
-        + gvIstisna; // Gelir vergisi istisnası eklenir
-
-    // Verginet'te "Net Ödenecek Tutar" → netIst
-    double netIst = net;
-
-    // İşveren maliyetleri
-    double sgkIsveren = brut * 0.155;  // SGK işveren payı %15.5
-    double issizlikIsveren = brut * 0.02; // İşsizlik sigortası işveren payı %2
-    double toplamMaliyet = brut + sgkIsveren + issizlikIsveren; // İşveren toplam maliyeti
+    double sgkIsci = brut * 0.14;
+    double issizlikIsci = brut * 0.01;
+    double matrah = brut - sgkIsci - issizlikIsci;
+    double gelirVergisi = _calculateIncomeTax(matrah, prevKumulatif);
+    double damgaVergisi = brut * 0.00759;
+    
+    // Net Ele Geçen Hesabı
+    double netEleGecen = brut - sgkIsci - issizlikIsci - gelirVergisi - damgaVergisi + gvIstisna + damgaIstisna;
+    
+    double sgkIsveren = brut * 0.155;
+    double issizlikIsveren = brut * 0.02;
+    double toplamMaliyet = brut + sgkIsveren + issizlikIsveren;
 
     return SalaryResult(
-      month: month,                // Ay adı
-      brut: brut,                  // Brüt maaş
-      sgkIsci: sgkIsci,            // SGK işçi kesintisi
-      issizlikIsci: issizlikIsci,  // İşsizlik işçi kesintisi
-      damgaVergisi: damgaVergisi,  // Damga vergisi
-      gelirVergisi: gelirVergisi,  // Gelir vergisi
-      matrah: matrah,              // Matrah
-      kumulatif: prevKumulatif + matrah, // Bu ay + önceki aylar toplam matrah
-      net: net,                    // Net maaş
-      netIst: netIst,              // Net ödenecek
-      sgkIsveren: sgkIsveren,      // SGK işveren payı
-      issizlikIsveren: issizlikIsveren, // İşsizlik işveren payı
-      toplamMaliyet: toplamMaliyet, // İşveren maliyet
+      month: month,
+      brut: brut,
+      sgkIsci: sgkIsci,
+      issizlikIsci: issizlikIsci,
+      damgaVergisi: damgaVergisi,
+      gelirVergisi: gelirVergisi,
+      matrah: matrah,
+      kumulatifMatrah: prevKumulatif + matrah, // Modeldeki ismiyle uyumlu
+      gvIstisnaTutari: gvIstisna,
+      dvIstisnaTutari: damgaIstisna,
+      netEleGecen: netEleGecen, // Modeldeki ismiyle uyumlu
+      isverenMaliyeti: toplamMaliyet,
     );
   }
 
-  // 12 ay için hesap döngüsü
-  List<SalaryResult> calculateYear(double brut) {
-    double kumulatif = 0; // Yıl boyunca matrah birikir
+  // 1. YILLIK HESAP (BRÜT GİRİŞİ)
+  List<SalaryResult> calculateYear(List<double> monthlyGross) {
+    double kumulatif = 0;
+    List<SalaryResult> results = [];
+    for (int i = 0; i < 12; i++) {
+      final r = calculateMonth(
+        month: months[i],
+        brut: monthlyGross[i],
+        prevKumulatif: kumulatif,
+      );
+      kumulatif = r.kumulatifMatrah; // Modeldeki ismiyle uyumlu
+      results.add(r);
+    }
+    return results;
+  }
+
+  // 2. YILLIK HESAP (NET GİRİŞİ)
+  List<SalaryResult> calculateYearFromNet(List<double> monthlyNets) {
+    double kumulatif = 0;
     List<SalaryResult> results = [];
 
-    for (var m in months) {
+    for (int i = 0; i < 12; i++) {
+      double targetNet = monthlyNets[i];
+      double calculatedGross = _findGrossForTargetNet(targetNet, kumulatif);
+      
       final r = calculateMonth(
-        month: m,
-        brut: brut,
-        prevKumulatif: kumulatif, // Bir önceki ayın birikmiş matrahı
+        month: months[i],
+        brut: calculatedGross,
+        prevKumulatif: kumulatif,
       );
+      
+      kumulatif = r.kumulatifMatrah; // Modeldeki ismiyle uyumlu
+      results.add(r);
+    }
+    return results;
+  }
 
-      kumulatif = r.kumulatif; // Kümülatifi güncelle
-      results.add(r);          // Listeye ekle
+  double _findGrossForTargetNet(double targetNet, double currentKumulatif) {
+    double low = targetNet;
+    double high = targetNet * 2.5; 
+    double tolerance = 0.01; 
+
+    while (_calculateNetOnly(high, currentKumulatif) < targetNet) {
+       high *= 1.5;
     }
 
-    return results; // 12 aylık maaş listesi
+    for (int i = 0; i < 100; i++) {
+      double mid = (low + high) / 2;
+      double net = _calculateNetOnly(mid, currentKumulatif);
+      if ((net - targetNet).abs() < tolerance) return mid;
+      if (net < targetNet) low = mid; else high = mid;
+    }
+    return (low + high) / 2;
+  }
+
+  double _calculateNetOnly(double brut, double prevKumulatif) {
+    double sgkIsci = brut * 0.14;
+    double issizlikIsci = brut * 0.01;
+    double matrah = brut - sgkIsci - issizlikIsci;
+    double gelirVergisi = _calculateIncomeTax(matrah, prevKumulatif);
+    double damgaVergisi = brut * 0.00759;
+    return brut - sgkIsci - issizlikIsci - gelirVergisi - damgaVergisi + gvIstisna + damgaIstisna;
   }
 }
 
-// Vergi dilimi yapısı (limit + oran)
 class _TaxBracket {
   final double limit;
   final double rate;

@@ -1,11 +1,11 @@
 name: mesai_hesaplama
 description: Mesai Hesaplama Uygulaması
-publish_to: "none"
+publish_to: 'none'
 
 version: 1.0.0+1
 
 environment:
-  sdk: ">=3.3.0 <4.0.0"
+  sdk: '>=3.3.0 <4.0.0'
 
 dependencies:
   flutter:
@@ -18,29 +18,48 @@ dependencies:
   fl_chart: ^0.68.0
   lucide_icons: ^0.257.0
 
-  # Local Storage
+  # Local Storage & Database
   shared_preferences: ^2.2.2
-
-  # Drift + SQLite
   drift: ^2.15.0
   drift_sqflite: ^2.0.1
   sqlite3_flutter_libs: ^0.5.21
   sqflite: ^2.3.0
+  
+  # Dosya ve Paylaşım İşlemleri (Excel Raporu İçin Gerekli)
   path: ^1.9.0
   path_provider: ^2.1.2
+  excel: ^4.0.0        # 🔥 EKLENDİ: Excel oluşturmak için
+  share_plus: ^7.2.1   # 🔥 EKLENDİ: Dosyayı paylaşmak için
+  open_filex: ^4.3.2   # 🔥 EKLENDİ: Dosyayı açmak için
 
-  # STATE MANAGEMENT (GEREKLİ)
+  # State Management & Utils
   provider: ^6.1.2
   intl: ^0.20.2
+  url_launcher: ^6.3.2
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-
+  
   flutter_lints: ^4.0.0
   drift_dev: ^2.15.0
   build_runner: ^2.4.6
+  
+  # İkon Oluşturucu
+  flutter_launcher_icons: "^0.13.1"
 
 flutter:
   uses-material-design: true
+  
+  # Görseller
+  assets:
+    - assets/
 
+# İKON AYARLARI
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/app_icon.jpg"
+  min_sdk_android: 21
+  adaptive_icon_background: "#111827"
+  adaptive_icon_foreground: "assets/app_icon.jpg"

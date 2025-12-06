@@ -1,23 +1,16 @@
 class SalaryResult {
   final String month;
-
   final double brut;
   final double sgkIsci;
   final double issizlikIsci;
   final double damgaVergisi;
   final double gelirVergisi;
-
   final double matrah;
-  final double kumulatifMatrah;
-
-  final double damgaIstisna;
-  final double gelirVergisiDilimi;
-  final double net;
-  final double netIstisnaSonrasi;
-
-  final double sgkIsveren;
-  final double issizlikIsveren;
-  final double toplamMaliyet;
+  final double kumulatifMatrah; // İsmi bu, 'kumulatif' değil
+  final double gvIstisnaTutari; // İsmi bu
+  final double dvIstisnaTutari;
+  final double netEleGecen; // İsmi bu
+  final double isverenMaliyeti;
 
   SalaryResult({
     required this.month,
@@ -28,12 +21,9 @@ class SalaryResult {
     required this.gelirVergisi,
     required this.matrah,
     required this.kumulatifMatrah,
-    required this.damgaIstisna,
-    required this.gelirVergisiDilimi,
-    required this.net,
-    required this.netIstisnaSonrasi,
-    required this.sgkIsveren,
-    required this.issizlikIsveren,
-    required this.toplamMaliyet,
+    required this.gvIstisnaTutari,
+    required this.dvIstisnaTutari,
+    required this.netEleGecen,
+    required this.isverenMaliyeti,
   });
 }

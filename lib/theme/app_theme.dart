@@ -37,7 +37,7 @@ class AppTheme {
       centerTitle: false,
       iconTheme: IconThemeData(color: _primaryLight),
     ),
-    // Sorun çıkaran cardTheme kaldırıldı (Widget'lar kendi stilini yönetiyor)
+    // Hata veren cardTheme kaldırıldı, varsayılan stil kullanılacak.
     pageTransitionsTheme: _pageTransitions,
   );
 
@@ -60,7 +60,7 @@ class AppTheme {
       centerTitle: false,
       iconTheme: IconThemeData(color: Colors.white),
     ),
-    // Sorun çıkaran cardTheme kaldırıldı
+    // Hata veren cardTheme kaldırıldı, varsayılan stil kullanılacak.
     pageTransitionsTheme: _pageTransitions,
   );
 }

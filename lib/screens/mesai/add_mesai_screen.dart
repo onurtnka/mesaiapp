@@ -3,11 +3,15 @@ import 'package:drift/drift.dart' as drift;
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
-import 'package:intl/date_symbol_data_local.dart'; // Bu satır gerekli
+import 'package:intl/date_symbol_data_local.dart'; // Tarih formatı için
+
 import '../../core/app_database.dart';
 
 class AddMesaiScreen extends StatefulWidget {
-  const AddMesaiScreen({super.key});
+  // Düzenleme için opsiyonel parametre
+  final MesaiTableData? editItem;
+
+  const AddMesaiScreen({super.key, this.editItem});
 
   @override
   State<AddMesaiScreen> createState() => _AddMesaiScreenState();
@@ -15,41 +19,87 @@ class AddMesaiScreen extends StatefulWidget {
 
 class _AddMesaiScreenState extends State<AddMesaiScreen> {
   // Form Değerleri
-  DateTime _selectedDate = DateTime.now();
-  final TextEditingController _hoursController = TextEditingController();
-  final TextEditingController _descController = TextEditingController();
+  late DateTime _selectedDate;
+  late TextEditingController _hoursController;
+  late TextEditingController _descController;
   
-  // Mesai Türü (Varsayılan değerler)
-  double _multiplier = 1.5; // 1.5 = %50 Zamlı
+  double _multiplier = 1.5; 
   String _selectedType = "Hafta İçi";
 
-  // DB'den gelecek veriler
   double _hourlyRate = 0;
   bool _isLoading = true;
 
-  @override
-void initState() {
-  super.initState();
-  initializeDateFormatting('tr_TR', null); // Bu satır hatayı çözer
-  _loadHourlyRate();
-}
+  // Düzenleme modunda mıyız?
+  bool get _isEditing => widget.editItem != null;
 
-  // Maaş tablosundan son kaydedilen saatlik net ücreti çek
-  Future<void> _loadHourlyRate() async {
-    final db = context.read<AppDatabase>();
-    final salaries = await db.select(db.userSalaryTable).get();
-    
-    if (salaries.isNotEmpty && mounted) {
-      setState(() {
-        _hourlyRate = salaries.last.hourlyRateNet ?? 0;
-        _isLoading = false;
-      });
+  @override
+  void initState() {
+    super.initState();
+    initializeDateFormatting('tr_TR', null);
+
+    // Eğer düzenleme modundaysak, verileri mevcut kayıttan doldur
+    if (_isEditing) {
+      final item = widget.editItem!;
+      _selectedDate = item.tarih;
+      _hoursController = TextEditingController(text: item.saat.toString());
+      _descController = TextEditingController(text: item.aciklama ?? "");
+      _multiplier = item.carpan;
+      
+      // Çarpana göre buton seçimini ayarla
+      if (_multiplier == 1.5) _selectedType = "Hafta İçi"; // Varsayılan
+      if (_multiplier == 2.0) _selectedType = "Resmî Tatil";
+      
+      // Düzenleme yaparken, o kaydın hesaplandığı saatlik ücreti korumaya çalışalım
+      // Formül: Tutar = Saat * Oran * Çarpan  =>  Oran = Tutar / (Saat * Çarpan)
+      if (item.saat > 0) {
+        _hourlyRate = item.ucret / (item.saat * item.carpan);
+      }
+      _isLoading = false;
     } else {
-      setState(() => _isLoading = false);
+      // Yeni kayıt modu
+      _selectedDate = DateTime.now();
+      _hoursController = TextEditingController();
+      _descController = TextEditingController();
+      
+      // Saatlik ücreti çek
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _loadHourlyRate();
+      });
     }
   }
 
-  // Tahmini kazanç hesabı
+  @override
+  void dispose() {
+    _hoursController.dispose();
+    _descController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadHourlyRate() async {
+    final db = context.read<AppDatabase>();
+    try {
+      final salaries = await db.select(db.userSalaryTable).get();
+      
+      if (salaries.isNotEmpty && mounted) {
+        setState(() {
+          _hourlyRate = salaries.last.hourlyRateNet ?? 0;
+          _isLoading = false;
+        });
+      } else {
+        if (mounted) {
+           setState(() => _isLoading = false);
+           // Maaş yok uyarısı
+           ScaffoldMessenger.of(context).showSnackBar(
+             const SnackBar(content: Text("Önce Maaş Hesaplama ekranından maaşınızı kaydedin!")),
+           );
+        }
+      }
+    } catch (e) {
+      debugPrint("Saatlik ücret yükleme hatası: $e");
+      if(mounted) setState(() => _isLoading = false);
+    }
+  }
+
   double get _estimatedEarnings {
     final hours = double.tryParse(_hoursController.text.replaceAll(',', '.')) ?? 0;
     return hours * _hourlyRate * _multiplier;
@@ -61,25 +111,47 @@ void initState() {
       return;
     }
 
+    if (_hourlyRate == 0) {
+       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Saatlik ücret bulunamadı. Lütfen önce maaş hesaplayıp kaydedin.")));
+       return;
+    }
+
     final db = context.read<AppDatabase>();
     final hours = double.parse(_hoursController.text.replaceAll(',', '.'));
     final amount = hours * _hourlyRate * _multiplier;
 
-    // Veritabanına Ekle
-    await db.into(db.mesaiTable).insert(MesaiTableCompanion(
-      tarih: drift.Value(_selectedDate),
-      saat: drift.Value(hours),
-      ucret: drift.Value(amount),
-      aciklama: drift.Value(_descController.text),
-      carpan: drift.Value(_multiplier), // Eğer tablonuzda carpan kolonu varsa
-    ));
-
-    if (mounted) {
-      Navigator.pop(context, true); // true = Veri eklendi, sayfayı yenile
+    if (_isEditing) {
+      // GÜNCELLEME İŞLEMİ
+      final updatedItem = widget.editItem!.copyWith(
+        tarih: _selectedDate,
+        saat: hours,
+        ucret: amount,
+        aciklama: drift.Value(_descController.text),
+        carpan: _multiplier,
+      );
+      
+      await db.update(db.mesaiTable).replace(updatedItem);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Kayıt güncellendi")));
+        Navigator.pop(context, true);
+      }
+    } else {
+      // YENİ KAYIT İŞLEMİ
+      await db.into(db.mesaiTable).insert(MesaiTableCompanion(
+        tarih: drift.Value(_selectedDate),
+        saat: drift.Value(hours),
+        ucret: drift.Value(amount),
+        aciklama: drift.Value(_descController.text),
+        carpan: drift.Value(_multiplier),
+      ));
+      
+      if (mounted) {
+        Navigator.pop(context, true);
+      }
     }
   }
 
-  // --- UI RENKLERİ ---
   bool get _isDark => Theme.of(context).brightness == Brightness.dark;
   Color get _colBg => _isDark ? const Color(0xFF111827) : const Color(0xFFF4F6F9);
   Color get _colCard => _isDark ? const Color(0xFF1F2937) : Colors.white;
@@ -91,7 +163,7 @@ void initState() {
     return Scaffold(
       backgroundColor: _colBg,
       appBar: AppBar(
-        title: Text("Mesai Ekle", style: TextStyle(color: _colText, fontWeight: FontWeight.bold)),
+        title: Text(_isEditing ? "Mesai Düzenle" : "Mesai Ekle", style: TextStyle(color: _colText, fontWeight: FontWeight.bold)),
         backgroundColor: Colors.transparent,
         elevation: 0,
         iconTheme: IconThemeData(color: _colText),
@@ -120,7 +192,8 @@ void initState() {
     );
   }
 
-  // 1. TAHMİNİ KAZANÇ KARTI (HEADER)
+  // ... WIDGETLAR (Aynı kalacak, sadece içerik dinamikleşti) ...
+  
   Widget _buildEarningsCard() {
     return Container(
       width: double.infinity,
@@ -132,7 +205,7 @@ void initState() {
       ),
       child: Column(
         children: [
-          const Text("Tahmini Kazanç", style: TextStyle(color: Colors.white70, fontSize: 14)),
+          Text(_isEditing ? "Güncel Tutar" : "Tahmini Kazanç", style: const TextStyle(color: Colors.white70, fontSize: 14)),
           const SizedBox(height: 4),
           Text(
             "₺${_estimatedEarnings.toStringAsFixed(2)}",
@@ -149,7 +222,6 @@ void initState() {
     );
   }
 
-  // 2. TARİH SEÇİCİ
   Widget _buildDatePicker() {
     return InkWell(
       onTap: () async {
@@ -158,9 +230,7 @@ void initState() {
           initialDate: _selectedDate, 
           firstDate: DateTime(2020), 
           lastDate: DateTime(2030),
-          builder: (context, child) {
-            return Theme(data: _isDark ? ThemeData.dark() : ThemeData.light(), child: child!);
-          }
+          builder: (context, child) => Theme(data: _isDark ? ThemeData.dark() : ThemeData.light(), child: child!)
         );
         if (picked != null) setState(() => _selectedDate = picked);
       },
@@ -180,11 +250,10 @@ void initState() {
     );
   }
 
-  // 3. MESAİ TÜRÜ SEÇİMİ (CHIPS)
   Widget _buildTypeSelector() {
     final types = [
       {"label": "Hafta İçi", "val": 1.5},
-      {"label": "Hafta Sonu", "val": 1.5}, // Bazı yerlerde 2.0 olabilir
+      {"label": "Hafta Sonu", "val": 1.5}, 
       {"label": "Resmî Tatil", "val": 2.0},
     ];
 
@@ -217,7 +286,6 @@ void initState() {
     );
   }
 
-  // 4. SAAT GİRİŞİ
   Widget _buildHourInput() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -231,12 +299,11 @@ void initState() {
           labelText: "Çalışma Süresi (Saat)",
           suffixText: "Saat",
         ),
-        onChanged: (_) => setState(() {}), // UI güncelle (Kazanç için)
+        onChanged: (_) => setState(() {}), 
       ),
     );
   }
 
-  // 5. AÇIKLAMA GİRİŞİ
   Widget _buildDescInput() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -253,7 +320,6 @@ void initState() {
     );
   }
 
-  // 6. KAYDET BUTONU
   Widget _buildSaveButton() {
     return SizedBox(
       width: double.infinity,
@@ -261,11 +327,11 @@ void initState() {
       child: ElevatedButton(
         onPressed: _save,
         style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFF10B981), // Yeşil
+          backgroundColor: const Color(0xFF10B981), 
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           elevation: 4,
         ),
-        child: const Text("MESAİYİ KAYDET", style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+        child: Text(_isEditing ? "KAYDI GÜNCELLE" : "MESAİYİ KAYDET", style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
       ),
     );
   }
